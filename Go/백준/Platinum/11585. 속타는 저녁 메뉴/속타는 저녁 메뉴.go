@@ -9,8 +9,8 @@ import (
 
 var (
 	n   int
-	src []rune
-	pat []rune
+	src []byte
+	pat []byte
 	lps []int
 
 	rb = bufio.NewReader(os.Stdin)
@@ -20,19 +20,19 @@ func main() {
 	fmt.Fscan(rb, &n)
 	rb.ReadString('\n')
 
-	src = make([]rune, n*2)
-	pat = make([]rune, n)
+	src = make([]byte, n*2)
+	pat = make([]byte, n)
 
 	line, _ := rb.ReadString('\n')
 	sl := strings.Fields(line)
 	for i := range n {
-		pat[i] = rune(sl[i][0])
+		pat[i] = byte(sl[i][0])
 	}
 
 	line, _ = rb.ReadString('\n')
 	sl = strings.Fields(line)
 	for i := range n {
-		src[i] = rune(sl[i][0])
+		src[i] = byte(sl[i][0])
 		src[i+n] = src[i]
 	}
 
