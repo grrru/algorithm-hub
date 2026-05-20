@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -gt 1 ]; then
+  echo "Usage: $0 [commit-message]" >&2
+  exit 1
+fi
+
+git add atcoder README.md
+
+if git diff --cached --quiet; then
+  echo "No changes to commit."
+  exit 0
+fi
+
+detect_language() {
+  case "$1" in
+  *.go) echo "go" ;;
+  *.cpp | *.cc | *.cxx) echo "cpp" ;;
+  *.java) echo "java" ;;
+  *) echo "" ;;
+  esac
+}
+
+format_language() {
+  case "$1" in
+  go) echo "Go" ;;
+  cpp) echo "C++" ;;
+  java) echo "Java" ;;
+  *) echo "$1" ;;
+  esac
+}
+
+default_message() {
+  local paths contests problems langs contest problem lang path detected
+
+  paths="$(git diff --cached --name-only -- atcoder)"
+  contests="$(printf '%s\n' "$paths" | awk -F/ 'NF >= 3 {print $2}' | sort -u)"
+  problems="$(printf '%s\n' "$paths" | awk -F/ 'NF >= 3 {print $3}' | sort -u)"
+
+  if [ "$(printf '%s\n' "$contests" | sed '/^$/d' | wc -l | tr -d ' ')" -ne 1 ] ||
+    [ "$(printf '%s\n' "$problems" | sed '/^$/d' | wc -l | tr -d ' ')" -ne 1 ]; then
+    echo "Update AtCoder solutions"
+    return
+  fi
+
+  contest="$(printf '%s\n' "$contests" | sed '/^$/d')"
+  problem="$(printf '%s\n' "$problems" | sed '/^$/d')"
+  langs=""
+
+  while IFS= read -r path; do
+    detected="$(detect_language "$path")"
+    if [ -n "$detected" ]; then
+      langs="${langs}${detected}"$'\n'
+    fi
+  done <<EOF
+$paths
+EOF
+
+  lang="$(printf '%s\n' "$langs" | sed '/^$/d' | sort -u)"
+
+  if [ "$(printf '%s\n' "$lang" | sed '/^$/d' | wc -l | tr -d ' ')" -ne 1 ]; then
+    echo "Update AtCoder solutions"
+    return
+  fi
+
+  lang="$(printf '%s\n' "$lang" | sed '/^$/d')"
+  echo "Submit AtCoder $(printf '%s' "$contest" | tr '[:lower:]' '[:upper:]') $(printf '%s' "$problem" | tr '[:lower:]' '[:upper:]') solution in $(format_language "$lang")"
+}
+
+message="${1:-$(default_message)}"
+
+git commit -m "$message"
+git push
