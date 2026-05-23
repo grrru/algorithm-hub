@@ -1,0 +1,291 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  scripts/atcoder new <contest> <problem> [go|cpp]
+  scripts/atcoder new <problem-url> [go|cpp]
+  scripts/atcoder done [commit-message]
+
+Examples:
+  scripts/atcoder new abc350 a
+  scripts/atcoder new https://atcoder.jp/contests/abc139/tasks/abc139_b
+  scripts/atcoder done
+EOF
+}
+
+detect_language() {
+  case "$1" in
+  *.go) echo "go" ;;
+  *.cpp | *.cc | *.cxx) echo "cpp" ;;
+  *.java) echo "java" ;;
+  *) echo "" ;;
+  esac
+}
+
+format_language() {
+  case "$1" in
+  go) echo "Go" ;;
+  cpp) echo "C++" ;;
+  java) echo "Java" ;;
+  *) echo "$1" ;;
+  esac
+}
+
+normalize_language() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+  go | golang) echo "go" ;;
+  cpp | c++ | cc | cxx) echo "cpp" ;;
+  *) echo "" ;;
+  esac
+}
+
+prompt_language() {
+  local input lang
+
+  while true; do
+    printf 'Language (go/cpp): ' >&2
+    if ! IFS= read -r input; then
+      echo "Language is required: go or cpp" >&2
+      exit 1
+    fi
+
+    lang="$(normalize_language "$input")"
+    if [ -n "$lang" ]; then
+      echo "$lang"
+      return
+    fi
+
+    echo "Please enter go or cpp." >&2
+  done
+}
+
+parse_atcoder_url() {
+  local raw path contest task problem
+
+  raw="${1%%\?*}"
+  raw="${raw%%#*}"
+  path="${raw#https://atcoder.jp/contests/}"
+  path="${path#http://atcoder.jp/contests/}"
+
+  if [ "$path" = "$raw" ] || [[ "$path" != */tasks/* ]]; then
+    return 1
+  fi
+
+  contest="${path%%/tasks/*}"
+  task="${path#*/tasks/}"
+  task="${task%%/*}"
+
+  if [ -z "$contest" ] || [ -z "$task" ]; then
+    return 1
+  fi
+
+  problem="${task#${contest}_}"
+  if [ "$problem" = "$task" ]; then
+    problem="${task##*_}"
+  fi
+
+  if [ -z "$problem" ]; then
+    return 1
+  fi
+
+  printf '%s\n%s\n%s\n' "$contest" "$problem" "$task"
+}
+
+detect_problem() {
+  local paths contests problems contest problem
+
+  paths="$(git diff --name-only --cached -- atcoder)"
+  contests="$(printf '%s\n' "$paths" | awk -F/ 'NF >= 3 {print $2}' | sort -u)"
+  problems="$(printf '%s\n' "$paths" | awk -F/ 'NF >= 3 {print $3}' | sort -u)"
+
+  if [ "$(printf '%s\n' "$contests" | sed '/^$/d' | wc -l | tr -d ' ')" -ne 1 ] ||
+    [ "$(printf '%s\n' "$problems" | sed '/^$/d' | wc -l | tr -d ' ')" -ne 1 ]; then
+    return
+  fi
+
+  contest="$(printf '%s\n' "$contests" | sed '/^$/d')"
+  problem="$(printf '%s\n' "$problems" | sed '/^$/d')"
+  echo "$contest/$problem"
+}
+
+mark_solved() {
+  local problem_dir readme
+
+  problem_dir="$1"
+  readme="atcoder/${problem_dir}/README.md"
+
+  if [ -f "$readme" ]; then
+    sed -i.bak 's/^- Status: .*/- Status: Solved/' "$readme"
+    rm -f "${readme}.bak"
+  fi
+}
+
+default_message() {
+  local paths langs contest problem lang path detected problem_dir
+
+  problem_dir="$1"
+  contest="${problem_dir%%/*}"
+  problem="${problem_dir#*/}"
+  paths="$(git diff --cached --name-only -- "atcoder/${problem_dir}")"
+  langs=""
+
+  while IFS= read -r path; do
+    detected="$(detect_language "$path")"
+    if [ -n "$detected" ]; then
+      langs="${langs}${detected}"$'\n'
+    fi
+  done <<EOF
+$paths
+EOF
+
+  lang="$(printf '%s\n' "$langs" | sed '/^$/d' | sort -u)"
+
+  if [ "$(printf '%s\n' "$lang" | sed '/^$/d' | wc -l | tr -d ' ')" -ne 1 ]; then
+    echo "Update AtCoder solutions"
+    return
+  fi
+
+  lang="$(printf '%s\n' "$lang" | sed '/^$/d')"
+  echo "Submit AtCoder $(printf '%s' "$contest" | tr '[:lower:]' '[:upper:]') $(printf '%s' "$problem" | tr '[:lower:]' '[:upper:]') solution in $(format_language "$lang")"
+}
+
+new_problem() {
+  local contest problem task dir url title file lang parsed lang_arg
+
+  if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+    echo "Usage: scripts/atcoder new <contest> <problem> [go|cpp]" >&2
+    echo "   or: scripts/atcoder new <problem-url> [go|cpp]" >&2
+    exit 1
+  fi
+
+  if [[ "$1" == http://* || "$1" == https://* ]]; then
+    if [ "$#" -gt 2 ]; then
+      echo "Usage: scripts/atcoder new <problem-url> [go|cpp]" >&2
+      exit 1
+    fi
+
+    if ! parsed="$(parse_atcoder_url "$1")"; then
+      echo "Invalid AtCoder problem URL: $1" >&2
+      exit 1
+    fi
+
+    contest="$(printf '%s\n' "$parsed" | sed -n '1p')"
+    problem="$(printf '%s\n' "$parsed" | sed -n '2p')"
+    task="$(printf '%s\n' "$parsed" | sed -n '3p')"
+    lang_arg="${2:-}"
+  else
+    if [ "$#" -lt 2 ]; then
+      echo "Usage: scripts/atcoder new <contest> <problem> [go|cpp]" >&2
+      exit 1
+    fi
+
+    contest="$1"
+    problem="$2"
+    task="${contest}_${problem}"
+    lang_arg="${3:-}"
+  fi
+
+  if [ -n "$lang_arg" ]; then
+    lang="$(normalize_language "$lang_arg")"
+    if [ -z "$lang" ]; then
+      echo "Unsupported language: $lang_arg (use go or cpp)" >&2
+      exit 1
+    fi
+  else
+    lang="$(prompt_language)"
+  fi
+
+  dir="atcoder/${contest}/${problem}"
+  url="https://atcoder.jp/contests/${contest}/tasks/${task}"
+  title="$(printf '%s %s' "$contest" "$problem" | tr '[:lower:]' '[:upper:]')"
+
+  mkdir -p "$dir"
+
+  if [ ! -f "${dir}/README.md" ]; then
+    cat >"${dir}/README.md" <<EOF
+# ${title}
+
+- Problem: ${url}
+- Status: TODO
+EOF
+  fi
+
+  case "$lang" in
+  go)
+    file="${dir}/main.go"
+    if [ ! -f "$file" ]; then
+      cat >"$file" <<'EOF'
+package main
+
+func main() {
+}
+EOF
+    fi
+    ;;
+  cpp)
+    file="${dir}/main.cpp"
+    if [ ! -f "$file" ]; then
+      cat >"$file" <<'EOF'
+#include <iostream>
+
+int main() {
+    return 0;
+}
+EOF
+    fi
+    ;;
+  esac
+
+  echo "$dir"
+  echo "$url"
+}
+
+done_problem() {
+  local problem_dir message
+
+  if [ "$#" -gt 1 ]; then
+    echo "Usage: scripts/atcoder done [commit-message]" >&2
+    exit 1
+  fi
+
+  git add atcoder README.md
+
+  if git diff --cached --quiet; then
+    echo "No changes to commit."
+    exit 0
+  fi
+
+  problem_dir="$(detect_problem || true)"
+  if [ -n "$problem_dir" ]; then
+    mark_solved "$problem_dir"
+    git add "atcoder/${problem_dir}/README.md"
+  fi
+
+  message="${1:-Update AtCoder solutions}"
+  if [ "$#" -eq 0 ] && [ -n "$problem_dir" ]; then
+    message="$(default_message "$problem_dir")"
+  fi
+
+  git commit -m "$message"
+  git push
+}
+
+if [ "$#" -eq 0 ]; then
+  usage
+  exit 1
+fi
+
+command="$1"
+shift
+
+case "$command" in
+new) new_problem "$@" ;;
+done | push) done_problem "$@" ;;
+-h | --help | help) usage ;;
+*)
+  usage >&2
+  exit 1
+  ;;
+esac
