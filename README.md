@@ -9,13 +9,20 @@
 Create a problem workspace:
 
 ```bash
-./atcoder-new abc350 a
+scripts/atcoder new abc350 a
 ```
 
 Push AtCoder changes:
 
 ```bash
-./atcoder-push
+scripts/atcoder done
 ```
 
 The default commit message is inferred from the staged AtCoder path, for example `Submit AtCoder ABC350 A solution in Go`.
+
+Legacy commands still work:
+
+```bash
+./atcoder-new abc350 a
+./atcoder-push
+```
