@@ -10,7 +10,10 @@ Create a problem workspace:
 
 ```bash
 scripts/atcoder new abc350 a
+scripts/atcoder new https://atcoder.jp/contests/abc139/tasks/abc139_b
 ```
+
+If no language is provided, the script prompts for `go` or `cpp`.
 
 Push AtCoder changes:
 
