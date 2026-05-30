@@ -228,11 +228,7 @@ EOF
     file="${dir}/main.cpp"
     if [ ! -f "$file" ]; then
       cat >"$file" <<'EOF'
-#include <iostream>
-
-int main() {
-    return 0;
-}
+int main() { return 0; }
 EOF
     fi
     ;;
