@@ -110,6 +110,12 @@ detect_problem() {
   echo "$contest/$problem"
 }
 
+detect_problems() {
+  git diff --name-only --cached -- atcoder |
+    awk -F/ 'NF >= 3 {print $2 "/" $3}' |
+    sort -u
+}
+
 mark_solved() {
   local problem_dir readme
 
@@ -239,7 +245,7 @@ EOF
 }
 
 done_problem() {
-  local problem_dir message
+  local count message problem_dir problem_dirs
 
   if [ "$#" -gt 1 ]; then
     echo "Usage: scripts/atcoder done [commit-message]" >&2
@@ -253,18 +259,42 @@ done_problem() {
     exit 0
   fi
 
-  problem_dir="$(detect_problem || true)"
-  if [ -n "$problem_dir" ]; then
+  problem_dirs="$(detect_problems)"
+  count="$(printf '%s\n' "$problem_dirs" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+  if [ "$count" -le 1 ]; then
+    problem_dir="$(detect_problem || true)"
+    if [ -n "$problem_dir" ]; then
+      mark_solved "$problem_dir"
+      git add "atcoder/${problem_dir}/README.md"
+    fi
+
+    message="${1:-Update AtCoder solutions}"
+    if [ "$#" -eq 0 ] && [ -n "$problem_dir" ]; then
+      message="$(default_message "$problem_dir")"
+    fi
+
+    git commit -m "$message"
+    git push
+    return
+  fi
+
+  while IFS= read -r problem_dir; do
+    [ -n "$problem_dir" ] || continue
+
     mark_solved "$problem_dir"
     git add "atcoder/${problem_dir}/README.md"
+
+    message="${1:-$(default_message "$problem_dir")}"
+    git commit -m "$message" -- "atcoder/${problem_dir}"
+  done <<EOF
+$problem_dirs
+EOF
+
+  if ! git diff --cached --quiet; then
+    git commit -m "Update AtCoder metadata"
   fi
 
-  message="${1:-Update AtCoder solutions}"
-  if [ "$#" -eq 0 ] && [ -n "$problem_dir" ]; then
-    message="$(default_message "$problem_dir")"
-  fi
-
-  git commit -m "$message"
   git push
 }
 
