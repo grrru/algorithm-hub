@@ -8,14 +8,13 @@ for src in [0-9][0-9][0-9][0-9]-*/; do
   src="${src%/}"
   dest="leetcode/${src}"
 
-  if [[ -e "${dest}" ]]; then
-    for item in "${src}"/*; do
-      git mv -f "${item}" "${dest}/" 2>/dev/null || mv -f "${item}" "${dest}/"
-    done
-    rmdir "${src}"
-  else
-    git mv "${src}" "${dest}" 2>/dev/null || mv "${src}" "${dest}"
-  fi
+  mkdir -p "${dest}"
+
+  for item in "${src}"/*; do
+    mv -f "${item}" "${dest}/"
+  done
+
+  rmdir "${src}"
 done
 
 if [[ -f README.md ]]; then

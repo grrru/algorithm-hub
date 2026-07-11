@@ -38,13 +38,14 @@ jobs:
 
       - name: Commit normalized layout
         run: |
-          if git diff --quiet; then
+          git add -A
+
+          if git diff --cached --quiet; then
             echo "No LeetCode layout changes."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
           git commit -m "Normalize LeetCode directory layout"
           git push
