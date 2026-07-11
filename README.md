@@ -35,9 +35,9 @@ Legacy commands still work:
 ## Array
 |  |
 | ------- |
-| [0001-two-sum](https://github.com/grrru/algorithm-hub/tree/master/0001-two-sum) |
+| [0001-two-sum](https://github.com/grrru/algorithm-hub/tree/master/leetcode/0001-two-sum) |
 ## Hash Table
 |  |
 | ------- |
-| [0001-two-sum](https://github.com/grrru/algorithm-hub/tree/master/0001-two-sum) |
+| [0001-two-sum](https://github.com/grrru/algorithm-hub/tree/master/leetcode/0001-two-sum) |
 <!---LeetCode Topics End-->
