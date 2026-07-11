@@ -43,13 +43,13 @@ Legacy commands still work:
 ## Linked List
 |  |
 | ------- |
-| [0002-add-two-numbers](https://github.com/grrru/algorithm-hub/tree/master/0002-add-two-numbers) |
+| [0002-add-two-numbers](https://github.com/grrru/algorithm-hub/tree/master/leetcode/0002-add-two-numbers) |
 ## Math
 |  |
 | ------- |
-| [0002-add-two-numbers](https://github.com/grrru/algorithm-hub/tree/master/0002-add-two-numbers) |
+| [0002-add-two-numbers](https://github.com/grrru/algorithm-hub/tree/master/leetcode/0002-add-two-numbers) |
 ## Recursion
 |  |
 | ------- |
-| [0002-add-two-numbers](https://github.com/grrru/algorithm-hub/tree/master/0002-add-two-numbers) |
+| [0002-add-two-numbers](https://github.com/grrru/algorithm-hub/tree/master/leetcode/0002-add-two-numbers) |
 <!---LeetCode Topics End-->
