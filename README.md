@@ -6,29 +6,27 @@
 
 ## AtCoder
 
-Create a problem workspace:
+Publish a solution from any directory without modifying a local checkout:
 
 ```bash
-scripts/atcoder new abc350 a
-scripts/atcoder new https://atcoder.jp/contests/abc139/tasks/abc139_b
+# Install once (make sure ~/.local/bin is in PATH)
+mkdir -p ~/.local/bin
+install -m 755 scripts/atcoder-pusher ~/.local/bin/atcoder-pusher
+atcoder-pusher setup git@github.com:grrru/algorithm-hub.git
+
+# Run in a directory containing main.go
+atcoder-pusher https://atcoder.jp/contests/abc467/tasks/abc467_e
+
+# Or provide the source file explicitly
+atcoder-pusher https://atcoder.jp/contests/abc467/tasks/abc467_e ./solution.go
 ```
 
-If no language is provided, the script prompts for `go` or `cpp`.
+`atcoder-pusher` uses a temporary shallow clone, commits only the target problem
+directory, and pushes it to the configured repository. Set
+`ATCODER_PUSHER_REPO` to override the configured repository for one command.
 
-Push AtCoder changes:
-
-```bash
-scripts/atcoder done
-```
-
-The default commit message is inferred from the staged AtCoder path, for example `Submit AtCoder ABC350 A solution in Go`.
-
-Legacy commands still work:
-
-```bash
-./atcoder-new abc350 a
-./atcoder-push
-```
+The commit message is generated automatically, for example
+`Submit AtCoder ABC350 A solution in Go`.
 
 <!---LeetCode Topics Start-->
 # LeetCode Topics

@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+program="atcoder-pusher"
+temp_work_dir=""
+
+usage() {
+  cat <<'EOF'
+Usage:
+  atcoder-pusher setup <git-repository>
+  atcoder-pusher <atcoder-problem-url> [source-file]
+  atcoder-pusher push <atcoder-problem-url> [source-file]
+
+Examples:
+  atcoder-pusher setup git@github.com:grrru/algorithm-hub.git
+  atcoder-pusher https://atcoder.jp/contests/abc467/tasks/abc467_e
+  atcoder-pusher https://atcoder.jp/contests/abc467/tasks/abc467_e solution.go
+
+The source file defaults to ./main.go. The repository is cloned into a
+temporary directory, so the command does not modify a local checkout.
+EOF
+}
+
+fail() {
+  echo "$program: $*" >&2
+  exit 1
+}
+
+cleanup() {
+  if [ -n "$temp_work_dir" ] && [ -d "$temp_work_dir" ]; then
+    rm -rf -- "$temp_work_dir"
+  fi
+}
+
+config_file() {
+  if [ -n "${XDG_CONFIG_HOME:-}" ]; then
+    printf '%s/atcoder-pusher/repository\n' "$XDG_CONFIG_HOME"
+    return
+  fi
+  if [ -n "${HOME:-}" ]; then
+    printf '%s/.config/atcoder-pusher/repository\n' "$HOME"
+    return
+  fi
+  fail "HOME or XDG_CONFIG_HOME is required"
+}
+
+setup_repository() {
+  [ "$#" -eq 1 ] || fail "Usage: atcoder-pusher setup <git-repository>"
+
+  local file
+  file="$(config_file)"
+  mkdir -p "$(dirname "$file")"
+  printf '%s\n' "$1" >"$file"
+  echo "Repository configured: $1"
+}
+
+script_directory() {
+  local source dir link
+  source="$0"
+
+  while [ -L "$source" ]; do
+    dir="$(CDPATH='' cd -- "$(dirname -- "$source")" && pwd -P)"
+    link="$(readlink "$source")"
+    case "$link" in
+    /*) source="$link" ;;
+    *) source="$dir/$link" ;;
+    esac
+  done
+
+  CDPATH='' cd -- "$(dirname -- "$source")" && pwd -P
+}
+
+repository_url() {
+  if [ -n "${ATCODER_PUSHER_REPO:-}" ]; then
+    printf '%s\n' "$ATCODER_PUSHER_REPO"
+    return
+  fi
+
+  local file repo root
+  file="$(config_file)"
+  if [ -f "$file" ]; then
+    IFS= read -r repo <"$file"
+    [ -n "$repo" ] || fail "configured repository is empty: $file"
+    printf '%s\n' "$repo"
+    return
+  fi
+
+  root="$(git -C "$(script_directory)" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$root" ]; then
+    repo="$(git -C "$root" remote get-url origin 2>/dev/null || true)"
+    if [ -n "$repo" ]; then
+      printf '%s\n' "$repo"
+      return
+    fi
+  fi
+
+  fail "repository is not configured; run: atcoder-pusher setup <git-repository>"
+}
+
+parse_atcoder_url() {
+  local raw path contest task problem
+  raw="${1%%\?*}"
+  raw="${raw%%#*}"
+  raw="${raw%/}"
+
+  case "$raw" in
+  https://atcoder.jp/contests/*/tasks/*)
+    path="${raw#https://atcoder.jp/contests/}"
+    ;;
+  http://atcoder.jp/contests/*/tasks/*)
+    path="${raw#http://atcoder.jp/contests/}"
+    ;;
+  *) return 1 ;;
+  esac
+
+  contest="${path%%/tasks/*}"
+  task="${path#*/tasks/}"
+
+  [[ "$contest" =~ ^[A-Za-z0-9_-]+$ ]] || return 1
+  [[ "$task" =~ ^[A-Za-z0-9_-]+$ ]] || return 1
+
+  problem="${task#"${contest}"_}"
+  if [ "$problem" = "$task" ]; then
+    problem="${task##*_}"
+  fi
+  [ -n "$problem" ] || return 1
+
+  contest="$(printf '%s' "$contest" | tr '[:upper:]' '[:lower:]')"
+  problem="$(printf '%s' "$problem" | tr '[:upper:]' '[:lower:]')"
+  printf '%s\n%s\n%s\n' "$contest" "$problem" "$task"
+}
+
+language_info() {
+  case "$1" in
+  *.go) printf 'main.go\nGo\n' ;;
+  *.cpp | *.cc | *.cxx) printf 'main.cpp\nC++\n' ;;
+  *.java) printf 'Main.java\nJava\n' ;;
+  *) return 1 ;;
+  esac
+}
+
+mark_solved() {
+  local readme="$1"
+  if grep -q '^- Status:' "$readme"; then
+    sed -i.bak 's/^- Status: .*/- Status: Solved/' "$readme"
+    rm -f "${readme}.bak"
+  else
+    printf '%s\n' '- Status: Solved' >>"$readme"
+  fi
+}
+
+push_solution() {
+  [ "$#" -ge 1 ] && [ "$#" -le 2 ] ||
+    fail "Usage: atcoder-pusher <atcoder-problem-url> [source-file]"
+
+  local url source parsed contest problem task language_data target_name language
+  local repo work_dir clone_dir target_dir readme title message branch
+
+  url="$1"
+  source="${2:-main.go}"
+  [ -f "$source" ] || fail "source file not found: $source"
+
+  parsed="$(parse_atcoder_url "$url")" || fail "invalid AtCoder problem URL: $url"
+  contest="$(printf '%s\n' "$parsed" | sed -n '1p')"
+  problem="$(printf '%s\n' "$parsed" | sed -n '2p')"
+  task="$(printf '%s\n' "$parsed" | sed -n '3p')"
+
+  language_data="$(language_info "$source")" ||
+    fail "unsupported source extension: $source (use .go, .cpp, .cc, .cxx, or .java)"
+  target_name="$(printf '%s\n' "$language_data" | sed -n '1p')"
+  language="$(printf '%s\n' "$language_data" | sed -n '2p')"
+
+  source="$(CDPATH='' cd -- "$(dirname -- "$source")" && pwd -P)/$(basename -- "$source")"
+  repo="$(repository_url)"
+  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/atcoder-pusher.XXXXXX")"
+  temp_work_dir="$work_dir"
+  trap cleanup EXIT
+  clone_dir="$work_dir/repository"
+
+  git clone --depth 1 --no-tags "$repo" "$clone_dir"
+
+  target_dir="$clone_dir/atcoder/$contest/$problem"
+  mkdir -p "$target_dir"
+  cp "$source" "$target_dir/$target_name"
+
+  readme="$target_dir/README.md"
+  title="$(printf '%s %s' "$contest" "$problem" | tr '[:lower:]' '[:upper:]')"
+  url="https://atcoder.jp/contests/${contest}/tasks/${task}"
+  if [ ! -f "$readme" ]; then
+    cat >"$readme" <<EOF
+# $title
+
+- Problem: $url
+- Status: Solved
+EOF
+  else
+    mark_solved "$readme"
+  fi
+
+  git -C "$clone_dir" add -- "atcoder/$contest/$problem"
+  if git -C "$clone_dir" diff --cached --quiet; then
+    echo "No changes: atcoder/$contest/$problem"
+    return
+  fi
+
+  message="Submit AtCoder $title solution in $language"
+  git -C "$clone_dir" commit -m "$message"
+  branch="$(git -C "$clone_dir" branch --show-current)"
+  [ -n "$branch" ] || fail "cannot determine the repository's default branch"
+  git -C "$clone_dir" push origin "HEAD:refs/heads/$branch"
+
+  echo "Published: atcoder/$contest/$problem/$target_name"
+}
+
+if [ "$#" -eq 0 ]; then
+  usage
+  exit 1
+fi
+
+case "$1" in
+setup)
+  shift
+  setup_repository "$@"
+  ;;
+push)
+  shift
+  push_solution "$@"
+  ;;
+-h | --help | help)
+  usage
+  ;;
+http://* | https://*)
+  push_solution "$@"
+  ;;
+*)
+  usage >&2
+  exit 1
+  ;;
+esac
