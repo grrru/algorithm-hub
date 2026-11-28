@@ -1,0 +1,51 @@
+name: Normalize BaekjoonHub
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "백준/**"
+      - "프로그래머스/**"
+      - ".github/scripts/normalize-baekjoonhub.sh"
+      - ".github/workflows/normalize-baekjoonhub.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: normalize-baekjoonhub-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  normalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Update branch
+        run: git pull --ff-only origin "${GITHUB_REF_NAME}"
+
+      - name: Normalize BaekjoonHub files
+        run: bash .github/scripts/normalize-baekjoonhub.sh
+
+      - name: Commit normalized layout
+        run: |
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No BaekjoonHub layout changes."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Normalize BaekjoonHub directory layout"
+          git push
